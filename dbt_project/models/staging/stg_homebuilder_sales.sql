@@ -50,23 +50,23 @@ cleaned AS (
         )                                                           AS incentive_rate,
 
         -- ── Dates ───────────────────────────────────────────────
-        TRY_TO_DATE(CONTRACT_DATE, 'YYYY-MM-DD')                   AS contract_date,
-        TRY_TO_DATE(CLOSE_DATE, 'YYYY-MM-DD')                      AS close_date,  -- NULL for open/cancelled
+        TRY_TO_DATE(CONTRACT_DATE)                   AS contract_date,
+        TRY_TO_DATE(CLOSE_DATE)                      AS close_date,  -- NULL for open/cancelled
 
         -- Recalculated days to close from parsed dates (validates raw field)
         DATEDIFF('day',
-            TRY_TO_DATE(CONTRACT_DATE, 'YYYY-MM-DD'),
-            TRY_TO_DATE(CLOSE_DATE, 'YYYY-MM-DD')
+            TRY_TO_DATE(CONTRACT_DATE),
+            TRY_TO_DATE(CLOSE_DATE)
         )                                                           AS days_to_close_calc,
 
         -- Original raw days_to_close for reference
         DAYS_TO_CLOSE                                               AS days_to_close_raw,
 
         -- Extracted time dimensions for dashboarding
-        YEAR(TRY_TO_DATE(CONTRACT_DATE, 'YYYY-MM-DD'))             AS contract_year,
-        MONTH(TRY_TO_DATE(CONTRACT_DATE, 'YYYY-MM-DD'))            AS contract_month,
-        MONTHNAME(TRY_TO_DATE(CONTRACT_DATE, 'YYYY-MM-DD'))        AS contract_month_name,
-        DATE_TRUNC('month', TRY_TO_DATE(CONTRACT_DATE, 'YYYY-MM-DD')) AS contract_month_start,
+        YEAR(TRY_TO_DATE(CONTRACT_DATE))             AS contract_year,
+        MONTH(TRY_TO_DATE(CONTRACT_DATE))            AS contract_month,
+        MONTHNAME(TRY_TO_DATE(CONTRACT_DATE))        AS contract_month_name,
+        DATE_TRUNC('month', TRY_TO_DATE(CONTRACT_DATE)) AS contract_month_start,
 
         -- ── Status Flags ─────────────────────────────────────────
         TRIM(UPPER(STATUS))                                         AS status_raw,
