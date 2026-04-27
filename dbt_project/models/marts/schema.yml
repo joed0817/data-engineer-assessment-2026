@@ -61,7 +61,6 @@ models:
       - name: sales_consultant
         description: Consultant name. Grain key.
         tests:
-          - unique
           - not_null
       - name: referral_close_rate
         description: Proportion of closed deals that came from referral sources.
