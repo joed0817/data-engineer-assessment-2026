@@ -1,0 +1,18 @@
+# ~/.dbt/profiles.yml
+# In dbt Cloud, configure this via the UI (Connection settings)
+# This file is provided for local dbt CLI reference only.
+
+rhodes_assessment:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"       # e.g. xy12345.us-east-1
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      role: SYSADMIN
+      database: ASSESSMENT
+      warehouse: COMPUTE_WH
+      schema: STAGING                                       # dbt default schema (overridden per layer)
+      threads: 4
+      client_session_keep_alive: False
