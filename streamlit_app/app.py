@@ -1024,6 +1024,7 @@ FINANCING MIX (closed contracts):
             st.markdown(msg["content"])
 
     # Suggested questions
+    # Suggested questions
     if not st.session_state.chat_history:
         st.markdown("**Try asking:**")
         suggestions = [
@@ -1031,15 +1032,21 @@ FINANCING MIX (closed contracts):
             "Who is the top performing sales consultant by closed units and by upgrade revenue?",
             "Which floor plan generates the most upgrade revenue on average?",
             "Which communities are at risk of missing their annual unit targets?",
-            "Compare avg days to close across all consultants — who closes fastest?",
             "What is the total upgrade revenue and which region contributes the most?",
             "Which lead source has the highest close rate?",
             "What's the financing mix for closed contracts and which loan type is most common?",
         ]
         for s in suggestions:
             if st.button(s, key=s):
-                st.session_state.chat_history.append({"role": "user", "content": s})
+                st.session_state.pending_question = s
                 st.rerun()
+
+    # Pull pending question from button click into the same flow as typed input
+    if "pending_question" in st.session_state and st.session_state.pending_question:
+        user_input = st.session_state.pending_question
+        st.session_state.pending_question = None
+    else:
+        user_input = st.chat_input("Ask a question about the sales data...")
 
     # User input
     user_input = st.chat_input("Ask a question about the sales data...")
