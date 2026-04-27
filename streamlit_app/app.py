@@ -838,31 +838,22 @@ with tab5:
                     st.caption(f"Generated: {str(generated)[:19]}")
 
 # ══════════════════════════════════════════════════════════════
-# TAB 6 — NATURAL LANGUAGE QUERY
+# BUILD DATA CONTEXT — defined outside tabs (used by chat below)
 # ══════════════════════════════════════════════════════════════
-with tab6:
-    st.header("💬 Ask the Data")
-    st.caption(
-        "Ask plain-English questions about Homebuilder Enterprises sales performance. "
-        "Powered by Claude (Anthropic) grounded in your live Snowflake data."
-    )
+def build_data_context(df_sales, df_community, df_consultant):
+    """
+    Build a rich grounded data context for Claude.
+    Covers overview, financials, upgrades, velocity,
+    lead sources, financing, community scorecard, and consultant leaderboard.
+    """
+    ctx_parts = []
 
-    # ── Build Data Context ──────────────────────────────────────
-    def build_data_context(df_sales, df_community, df_consultant):
-        """
-        Build a rich data context for Claude. Covers all major dimensions:
-        overview, financials, upgrades, velocity, lead sources, financing,
-        regional targets, community scorecard, and consultant leaderboard.
-        Avoids sending 600 raw rows — uses pre-aggregated summaries instead.
-        """
-        ctx_parts = []
+    if not df_sales.empty:
+        closed    = df_sales[df_sales["is_closed"] == True]
+        cancelled = df_sales[df_sales["is_cancelled"] == True]
 
-        if not df_sales.empty:
-            closed   = df_sales[df_sales["is_closed"] == True]
-            cancelled = df_sales[df_sales["is_cancelled"] == True]
-
-            # ── 1. Dataset Overview ────────────────────────────────
-            ctx_parts.append(f"""
+        # 1. Dataset Overview
+        ctx_parts.append(f"""
 DATASET OVERVIEW:
 - Total contracts: {len(df_sales):,}
 - Closed: {int(df_sales["is_closed"].sum())} | Cancelled: {int(df_sales["is_cancelled"].sum())} | Under Contract: {int(df_sales["is_under_contract"].sum())}
@@ -872,80 +863,75 @@ DATASET OVERVIEW:
 - Communities ({df_sales["community"].nunique()} total): {", ".join(sorted(df_sales["community"].unique()))}
 - Sales consultants: {", ".join(sorted(df_sales["sales_consultant"].unique()))}
 - Floor plans: {", ".join(sorted(df_sales["plan_name"].unique()))}
-- Loan types available: {", ".join(sorted(df_sales["loan_type"].unique()))}
+- Loan types: {", ".join(sorted(df_sales["loan_type"].unique()))}
 - Buyer sources: {", ".join(sorted(df_sales["buyer_source"].unique()))}
 """)
 
-            # ── 2. Financial Summary (closed only) ────────────────
-            if not closed.empty:
-                ctx_parts.append(f"""
+        # 2. Financial Summary
+        if not closed.empty:
+            ctx_parts.append(f"""
 FINANCIAL SUMMARY (closed contracts only):
 - Total revenue: ${closed["contract_price"].sum():,.0f}
 - Avg contract price: ${closed["contract_price"].mean():,.0f}
-- Min contract price: ${closed["contract_price"].min():,.0f}
-- Max contract price: ${closed["contract_price"].max():,.0f}
+- Min / Max contract price: ${closed["contract_price"].min():,.0f} / ${closed["contract_price"].max():,.0f}
 - Avg price per sqft: ${closed["price_per_sqft"].mean():.2f}
 - Avg base price: ${closed["base_price"].mean():,.0f}
 - Avg gross margin: {closed["gross_margin_pct"].mean()*100:.1f}%
-- Total agent commissions paid: ${closed["agent_commission"].sum():,.0f}
+- Total agent commissions: ${closed["agent_commission"].sum():,.0f}
 - Avg agent commission: ${closed["agent_commission"].mean():,.0f}
 """)
 
-            # ── 3. Upgrade Revenue Summary ─────────────────────────
-            if not closed.empty:
-                upgrade_by_plan = (
-                    closed.groupby("plan_name")["upgrade_amount"]
-                    .agg(total="sum", avg="mean", count="count")
-                    .sort_values("total", ascending=False)
-                    .reset_index()
-                )
-                upgrade_by_region = (
-                    closed.groupby("region")["upgrade_amount"]
-                    .agg(total="sum", avg="mean")
-                    .reset_index()
-                )
-                upgrade_by_consultant = (
-                    closed.groupby("sales_consultant")["upgrade_amount"]
-                    .agg(total="sum", avg="mean")
-                    .sort_values("avg", ascending=False)
-                    .reset_index()
-                )
-                ctx_parts.append(f"""
+        # 3. Upgrade Revenue
+        if not closed.empty:
+            upgrade_by_plan = (
+                closed.groupby("plan_name")["upgrade_amount"]
+                .agg(total="sum", avg="mean", count="count")
+                .sort_values("total", ascending=False)
+                .reset_index()
+            )
+            upgrade_by_region = (
+                closed.groupby("region")["upgrade_amount"]
+                .agg(total="sum", avg="mean")
+                .reset_index()
+            )
+            upgrade_by_consultant = (
+                closed.groupby("sales_consultant")["upgrade_amount"]
+                .agg(total="sum", avg="mean")
+                .sort_values("avg", ascending=False)
+                .reset_index()
+            )
+            ctx_parts.append(f"""
 UPGRADE REVENUE ANALYSIS:
 - Total upgrade revenue: ${closed["upgrade_amount"].sum():,.0f}
 - Avg upgrade per home: ${closed["upgrade_amount"].mean():,.0f}
-- Upgrade attach rate: {(closed["upgrade_amount"]>0).mean()*100:.1f}% of closed contracts have upgrades
+- Upgrade attach rate: {(closed["upgrade_amount"]>0).mean()*100:.1f}%
 - Upgrades as % of total revenue: {closed["upgrade_amount"].sum()/closed["contract_price"].sum()*100:.1f}%
 
-By floor plan (sorted by total upgrade revenue):
+By floor plan (highest to lowest):
 {upgrade_by_plan.to_string(index=False)}
 
 By region:
 {upgrade_by_region.to_string(index=False)}
 
-By consultant (sorted by avg upgrade):
+By consultant (highest avg):
 {upgrade_by_consultant.to_string(index=False)}
 """)
 
-            # ── 4. Velocity / Days to Close ────────────────────────
-            if not closed.empty:
-                vel_by_region = (
-                    closed.groupby("region")["days_to_close"]
-                    .agg(avg="mean", min="min", max="max")
-                    .round(1)
-                    .reset_index()
-                )
-                vel_by_consultant = (
-                    closed.groupby("sales_consultant")["days_to_close"]
-                    .mean().round(1)
-                    .sort_values()
-                    .reset_index()
-                )
-                ctx_parts.append(f"""
+        # 4. Close Velocity
+        if not closed.empty:
+            vel_by_region = (
+                closed.groupby("region")["days_to_close"]
+                .agg(avg="mean", min="min", max="max")
+                .round(1).reset_index()
+            )
+            vel_by_consultant = (
+                closed.groupby("sales_consultant")["days_to_close"]
+                .mean().round(1).sort_values().reset_index()
+            )
+            ctx_parts.append(f"""
 CLOSE VELOCITY:
 - Overall avg days to close: {closed["days_to_close"].mean():.0f} days
-- Fastest close: {closed["days_to_close"].min():.0f} days
-- Slowest close: {closed["days_to_close"].max():.0f} days
+- Fastest: {closed["days_to_close"].min():.0f} days | Slowest: {closed["days_to_close"].max():.0f} days
 
 By region:
 {vel_by_region.to_string(index=False)}
@@ -954,77 +940,85 @@ By consultant (fastest to slowest):
 {vel_by_consultant.to_string(index=False)}
 """)
 
-            # ── 5. Lead Source Breakdown ───────────────────────────
-            source_summary = (
-                df_sales.groupby("buyer_source")
-                .agg(
-                    total=("contract_id","count"),
-                    closed=("is_closed","sum"),
-                    cancelled=("is_cancelled","sum")
-                )
+        # 5. Lead Source Performance
+        source_summary = (
+            df_sales.groupby("buyer_source")
+            .agg(total=("contract_id","count"), closed=("is_closed","sum"), cancelled=("is_cancelled","sum"))
+            .reset_index()
+        )
+        source_summary["close_rate"] = (source_summary["closed"] / source_summary["total"] * 100).round(1)
+        ctx_parts.append(f"""
+LEAD SOURCE PERFORMANCE:
+{source_summary.sort_values("closed", ascending=False).to_string(index=False)}
+""")
+
+        # 6. Financing Mix
+        if not closed.empty:
+            loan_mix = (
+                closed.groupby("loan_type")
+                .agg(count=("contract_id","count"), avg_price=("contract_price","mean"))
                 .reset_index()
             )
-            source_summary["close_rate"] = (source_summary["closed"] / source_summary["total"] * 100).round(1)
-            source_summary = source_summary.sort_values("closed", ascending=False)
+            loan_mix["pct"] = (loan_mix["count"] / loan_mix["count"].sum() * 100).round(1)
             ctx_parts.append(f"""
-LEAD SOURCE PERFORMANCE:
-{source_summary.to_string(index=False)}
-""")
-
-            # ── 6. Financing Mix ───────────────────────────────────
-            if not closed.empty:
-                loan_mix = (
-                    closed.groupby("loan_type")
-                    .agg(count=("contract_id","count"), avg_price=("contract_price","mean"))
-                    .reset_index()
-                )
-                loan_mix["pct"] = (loan_mix["count"] / loan_mix["count"].sum() * 100).round(1)
-                loan_mix = loan_mix.sort_values("count", ascending=False)
-                ctx_parts.append(f"""
 FINANCING MIX (closed contracts):
-{loan_mix.to_string(index=False)}
+{loan_mix.sort_values("count", ascending=False).to_string(index=False)}
 """)
 
-        # ── 7. Community Scorecard ─────────────────────────────────
-        if not df_community.empty:
-            comm_cols = [
-                "community","region","regional_manager",
-                "closed_units","sales_target_units","target_attainment_pct",
-                "cancellation_rate","avg_contract_price","avg_price_per_sqft",
-                "avg_days_to_close","avg_gross_margin_pct","performance_tier",
-                "total_upgrade_revenue","avg_upgrade_amount","upgrade_attach_rate",
-                "upgrade_pct_of_revenue","revenue_target_est"
-            ]
-            available_cols = [c for c in comm_cols if c in df_community.columns]
-            ctx_parts.append("\nCOMMUNITY SCORECARD (all metrics per community):\n" +
-                df_community[available_cols].to_string(index=False))
+    # 7. Community Scorecard
+    if not df_community.empty:
+        comm_cols = [
+            "community","region","regional_manager",
+            "closed_units","sales_target_units","target_attainment_pct",
+            "cancellation_rate","avg_contract_price","avg_price_per_sqft",
+            "avg_days_to_close","avg_gross_margin_pct","performance_tier",
+            "total_upgrade_revenue","avg_upgrade_amount","upgrade_attach_rate",
+            "upgrade_pct_of_revenue","revenue_target_est",
+        ]
+        available_cols = [c for c in comm_cols if c in df_community.columns]
+        ctx_parts.append("\nCOMMUNITY SCORECARD:\n" + df_community[available_cols].to_string(index=False))
 
-        # ── 8. Consultant Leaderboard ──────────────────────────────
-        if not df_consultant.empty:
-            cons_cols = [
-                "sales_consultant","region","closed_units","cancelled_units",
-                "total_closed_revenue","avg_sale_price","avg_price_per_sqft",
-                "avg_days_to_close","cancellation_rate","avg_upgrade_attach_rate",
-                "total_upgrade_revenue","referral_close_rate","total_commissions"
-            ]
-            available_cons = [c for c in cons_cols if c in df_consultant.columns]
-            ctx_parts.append("\nCONSULTANT LEADERBOARD (full metrics):\n" +
-                df_consultant[available_cons].sort_values("closed_units", ascending=False)
-                .to_string(index=False))
+    # 8. Consultant Leaderboard
+    if not df_consultant.empty:
+        cons_cols = [
+            "sales_consultant","region","closed_units","cancelled_units",
+            "total_closed_revenue","avg_sale_price","avg_price_per_sqft",
+            "avg_days_to_close","cancellation_rate","avg_upgrade_attach_rate",
+            "total_upgrade_revenue","referral_close_rate","total_commissions",
+        ]
+        available_cons = [c for c in cons_cols if c in df_consultant.columns]
+        ctx_parts.append("\nCONSULTANT LEADERBOARD:\n" +
+            df_consultant[available_cons].sort_values("closed_units", ascending=False).to_string(index=False))
 
-        return "\n".join(ctx_parts)
+    return "\n".join(ctx_parts)
 
-    # ── Chat Interface ──────────────────────────────────────────
-    if "chat_history" not in st.session_state:
-        st.session_state.chat_history = []
+# ══════════════════════════════════════════════════════════════
+# TAB 6 — NATURAL LANGUAGE QUERY
+# chat_input MUST live outside tab blocks in Streamlit
+# ══════════════════════════════════════════════════════════════
+
+# Initialize session state
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+if "pending_question" not in st.session_state:
+    st.session_state.pending_question = None
+
+# st.chat_input must be at top level — not inside any with tab/container block
+user_input = st.chat_input("Ask a question about the sales data...")
+
+with tab6:
+    st.header("💬 Ask the Data")
+    st.caption(
+        "Ask plain-English questions about Homebuilder Enterprises sales performance. "
+        "Powered by Claude (Anthropic) grounded in your live Snowflake data."
+    )
 
     # Render prior messages
     for msg in st.session_state.chat_history:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    # Suggested questions
-    # Suggested questions
+    # Suggested questions — only shown when chat is empty
     if not st.session_state.chat_history:
         st.markdown("**Try asking:**")
         suggestions = [
@@ -1037,25 +1031,20 @@ FINANCING MIX (closed contracts):
             "What's the financing mix for closed contracts and which loan type is most common?",
         ]
         for s in suggestions:
-            if st.button(s, key=s):
+            if st.button(s, key=f"suggestion_{s[:30]}"):
                 st.session_state.pending_question = s
                 st.rerun()
 
-    # Pull pending question from button click into the same flow as typed input
-    if "pending_question" in st.session_state and st.session_state.pending_question:
-        user_input = st.session_state.pending_question
+    # Resolve input — button click takes priority over typed input
+    active_input = st.session_state.pending_question or user_input
+    if st.session_state.pending_question:
         st.session_state.pending_question = None
-    else:
-        user_input = st.chat_input("Ask a question about the sales data...", key="chat_input_main")
 
-    # User input
-    user_input = st.chat_input("Ask a question about the sales data...", key="chat_input_main")
-
-    if user_input:
-        st.session_state.chat_history.append({"role": "user", "content": user_input})
+    if active_input:
+        st.session_state.chat_history.append({"role": "user", "content": active_input})
 
         with st.chat_message("user"):
-            st.markdown(user_input)
+            st.markdown(active_input)
 
         with st.chat_message("assistant"):
             with st.spinner("Analyzing data..."):
@@ -1081,9 +1070,8 @@ GROUNDING RULES — follow these strictly:
 8. If you are uncertain whether a number is exact or approximate, say so explicitly."""
 
                     # ── Grounded message structure ──────────────────
-                    # Pattern: data context injected as first user/assistant exchange,
+                    # Standard RAG pattern: context first as user/assistant exchange,
                     # then conversation history, then current question.
-                    # This is the standard RAG grounding pattern.
                     messages = [
                         {
                             "role": "user",
@@ -1110,8 +1098,8 @@ GROUNDING RULES — follow these strictly:
                     for m in st.session_state.chat_history[:-1]:
                         messages.append({"role": m["role"], "content": m["content"]})
 
-                    # Append current user question
-                    messages.append({"role": "user", "content": user_input})
+                    # Append current question
+                    messages.append({"role": "user", "content": active_input})
 
                     response = client.messages.create(
                         model="claude-sonnet-4-6",
@@ -1129,6 +1117,7 @@ GROUNDING RULES — follow these strictly:
                     st.session_state.chat_history.append({"role": "assistant", "content": err_msg})
 
     if st.session_state.chat_history:
-        if st.button("🗑️ Clear conversation"):
+        if st.button("🗑️ Clear conversation", key="clear_chat"):
             st.session_state.chat_history = []
+            st.session_state.pending_question = None
             st.rerun()
