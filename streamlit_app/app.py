@@ -849,33 +849,167 @@ with tab6:
 
     # ── Build Data Context ──────────────────────────────────────
     def build_data_context(df_sales, df_community, df_consultant):
-        """Summarize key data for LLM context — avoids sending 600 raw rows."""
+        """
+        Build a rich data context for Claude. Covers all major dimensions:
+        overview, financials, upgrades, velocity, lead sources, financing,
+        regional targets, community scorecard, and consultant leaderboard.
+        Avoids sending 600 raw rows — uses pre-aggregated summaries instead.
+        """
         ctx_parts = []
 
         if not df_sales.empty:
-            closed = df_sales[df_sales["is_closed"] == True]
+            closed   = df_sales[df_sales["is_closed"] == True]
+            cancelled = df_sales[df_sales["is_cancelled"] == True]
+
+            # ── 1. Dataset Overview ────────────────────────────────
             ctx_parts.append(f"""
 DATASET OVERVIEW:
 - Total contracts: {len(df_sales):,}
-- Closed: {int(df_sales['is_closed'].sum())} | Cancelled: {int(df_sales['is_cancelled'].sum())} | Under Contract: {int(df_sales['is_under_contract'].sum())}
-- Date range: {df_sales['contract_date'].min().date()} to {df_sales['contract_date'].max().date()}
-- Regions: {', '.join(df_sales['region'].unique())}
-- Communities: {', '.join(df_sales['community'].unique())}
-- Sales consultants: {', '.join(df_sales['sales_consultant'].unique())}
-- Loan types: {', '.join(df_sales['loan_type'].unique())}
+- Closed: {int(df_sales["is_closed"].sum())} | Cancelled: {int(df_sales["is_cancelled"].sum())} | Under Contract: {int(df_sales["is_under_contract"].sum())}
+- Cancellation rate: {len(cancelled)/max(len(closed)+len(cancelled),1)*100:.1f}%
+- Date range: {df_sales["contract_date"].min().date()} to {df_sales["contract_date"].max().date()}
+- Regions: {", ".join(sorted(df_sales["region"].unique()))}
+- Communities ({df_sales["community"].nunique()} total): {", ".join(sorted(df_sales["community"].unique()))}
+- Sales consultants: {", ".join(sorted(df_sales["sales_consultant"].unique()))}
+- Floor plans: {", ".join(sorted(df_sales["plan_name"].unique()))}
+- Loan types available: {", ".join(sorted(df_sales["loan_type"].unique()))}
+- Buyer sources: {", ".join(sorted(df_sales["buyer_source"].unique()))}
 """)
 
-        if not df_community.empty:
-            ctx_parts.append("\nCOMMUNITY SUMMARY (closed deals only):\n" +
-                df_community[["community","region","regional_manager","closed_units",
-                               "sales_target_units","avg_contract_price","avg_price_per_sqft",
-                               "avg_days_to_close","cancellation_rate","performance_tier"]]
-                .to_string(index=False))
+            # ── 2. Financial Summary (closed only) ────────────────
+            if not closed.empty:
+                ctx_parts.append(f"""
+FINANCIAL SUMMARY (closed contracts only):
+- Total revenue: ${closed["contract_price"].sum():,.0f}
+- Avg contract price: ${closed["contract_price"].mean():,.0f}
+- Min contract price: ${closed["contract_price"].min():,.0f}
+- Max contract price: ${closed["contract_price"].max():,.0f}
+- Avg price per sqft: ${closed["price_per_sqft"].mean():.2f}
+- Avg base price: ${closed["base_price"].mean():,.0f}
+- Avg gross margin: {closed["gross_margin_pct"].mean()*100:.1f}%
+- Total agent commissions paid: ${closed["agent_commission"].sum():,.0f}
+- Avg agent commission: ${closed["agent_commission"].mean():,.0f}
+""")
 
+            # ── 3. Upgrade Revenue Summary ─────────────────────────
+            if not closed.empty:
+                upgrade_by_plan = (
+                    closed.groupby("plan_name")["upgrade_amount"]
+                    .agg(total="sum", avg="mean", count="count")
+                    .sort_values("total", ascending=False)
+                    .reset_index()
+                )
+                upgrade_by_region = (
+                    closed.groupby("region")["upgrade_amount"]
+                    .agg(total="sum", avg="mean")
+                    .reset_index()
+                )
+                upgrade_by_consultant = (
+                    closed.groupby("sales_consultant")["upgrade_amount"]
+                    .agg(total="sum", avg="mean")
+                    .sort_values("avg", ascending=False)
+                    .reset_index()
+                )
+                ctx_parts.append(f"""
+UPGRADE REVENUE ANALYSIS:
+- Total upgrade revenue: ${closed["upgrade_amount"].sum():,.0f}
+- Avg upgrade per home: ${closed["upgrade_amount"].mean():,.0f}
+- Upgrade attach rate: {(closed["upgrade_amount"]>0).mean()*100:.1f}% of closed contracts have upgrades
+- Upgrades as % of total revenue: {closed["upgrade_amount"].sum()/closed["contract_price"].sum()*100:.1f}%
+
+By floor plan (sorted by total upgrade revenue):
+{upgrade_by_plan.to_string(index=False)}
+
+By region:
+{upgrade_by_region.to_string(index=False)}
+
+By consultant (sorted by avg upgrade):
+{upgrade_by_consultant.to_string(index=False)}
+""")
+
+            # ── 4. Velocity / Days to Close ────────────────────────
+            if not closed.empty:
+                vel_by_region = (
+                    closed.groupby("region")["days_to_close"]
+                    .agg(avg="mean", min="min", max="max")
+                    .round(1)
+                    .reset_index()
+                )
+                vel_by_consultant = (
+                    closed.groupby("sales_consultant")["days_to_close"]
+                    .mean().round(1)
+                    .sort_values()
+                    .reset_index()
+                )
+                ctx_parts.append(f"""
+CLOSE VELOCITY:
+- Overall avg days to close: {closed["days_to_close"].mean():.0f} days
+- Fastest close: {closed["days_to_close"].min():.0f} days
+- Slowest close: {closed["days_to_close"].max():.0f} days
+
+By region:
+{vel_by_region.to_string(index=False)}
+
+By consultant (fastest to slowest):
+{vel_by_consultant.to_string(index=False)}
+""")
+
+            # ── 5. Lead Source Breakdown ───────────────────────────
+            source_summary = (
+                df_sales.groupby("buyer_source")
+                .agg(
+                    total=("contract_id","count"),
+                    closed=("is_closed","sum"),
+                    cancelled=("is_cancelled","sum")
+                )
+                .reset_index()
+            )
+            source_summary["close_rate"] = (source_summary["closed"] / source_summary["total"] * 100).round(1)
+            source_summary = source_summary.sort_values("closed", ascending=False)
+            ctx_parts.append(f"""
+LEAD SOURCE PERFORMANCE:
+{source_summary.to_string(index=False)}
+""")
+
+            # ── 6. Financing Mix ───────────────────────────────────
+            if not closed.empty:
+                loan_mix = (
+                    closed.groupby("loan_type")
+                    .agg(count=("contract_id","count"), avg_price=("contract_price","mean"))
+                    .reset_index()
+                )
+                loan_mix["pct"] = (loan_mix["count"] / loan_mix["count"].sum() * 100).round(1)
+                loan_mix = loan_mix.sort_values("count", ascending=False)
+                ctx_parts.append(f"""
+FINANCING MIX (closed contracts):
+{loan_mix.to_string(index=False)}
+""")
+
+        # ── 7. Community Scorecard ─────────────────────────────────
+        if not df_community.empty:
+            comm_cols = [
+                "community","region","regional_manager",
+                "closed_units","sales_target_units","target_attainment_pct",
+                "cancellation_rate","avg_contract_price","avg_price_per_sqft",
+                "avg_days_to_close","avg_gross_margin_pct","performance_tier",
+                "total_upgrade_revenue","avg_upgrade_amount","upgrade_attach_rate",
+                "upgrade_pct_of_revenue","revenue_target_est"
+            ]
+            available_cols = [c for c in comm_cols if c in df_community.columns]
+            ctx_parts.append("\nCOMMUNITY SCORECARD (all metrics per community):\n" +
+                df_community[available_cols].to_string(index=False))
+
+        # ── 8. Consultant Leaderboard ──────────────────────────────
         if not df_consultant.empty:
-            ctx_parts.append("\nCONSULTANT PERFORMANCE:\n" +
-                df_consultant[["sales_consultant","region","closed_units",
-                                "avg_sale_price","avg_days_to_close","cancellation_rate"]]
+            cons_cols = [
+                "sales_consultant","region","closed_units","cancelled_units",
+                "total_closed_revenue","avg_sale_price","avg_price_per_sqft",
+                "avg_days_to_close","cancellation_rate","avg_upgrade_attach_rate",
+                "total_upgrade_revenue","referral_close_rate","total_commissions"
+            ]
+            available_cons = [c for c in cons_cols if c in df_consultant.columns]
+            ctx_parts.append("\nCONSULTANT LEADERBOARD (full metrics):\n" +
+                df_consultant[available_cons].sort_values("closed_units", ascending=False)
                 .to_string(index=False))
 
         return "\n".join(ctx_parts)
@@ -894,10 +1028,13 @@ DATASET OVERVIEW:
         st.markdown("**Try asking:**")
         suggestions = [
             "Which region has the highest cancellation rate and why might that be?",
-            "Who is the top performing sales consultant overall?",
-            "What's the average price per sqft across all communities?",
+            "Who is the top performing sales consultant by closed units and by upgrade revenue?",
+            "Which floor plan generates the most upgrade revenue on average?",
             "Which communities are at risk of missing their annual unit targets?",
-            "What's the most common loan type for Rio Grande Valley buyers?",
+            "Compare avg days to close across all consultants — who closes fastest?",
+            "What is the total upgrade revenue and which region contributes the most?",
+            "Which lead source has the highest close rate?",
+            "What's the financing mix for closed contracts and which loan type is most common?",
         ]
         for s in suggestions:
             if st.button(s, key=s):
@@ -939,7 +1076,7 @@ User question: {user_input}"""
 
                     response = client.messages.create(
                         model="claude-sonnet-4-20250514",
-                        max_tokens=1000,
+                        max_tokens=8192,
                         messages=messages,
                     )
                     answer = response.content[0].text
