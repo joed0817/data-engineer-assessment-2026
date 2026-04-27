@@ -54,6 +54,7 @@ models:
       - name: region
         description: Sales region name. Primary key and join key.
         tests:
+          - unique
           - not_null
       - name: regional_manager
         description: Full name of the regional manager.
