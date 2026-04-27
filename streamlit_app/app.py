@@ -1056,27 +1056,60 @@ FINANCING MIX (closed contracts):
                     client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
                     data_context = build_data_context(df_sales, df_community, df_consultant)
 
-                    # Build message history for multi-turn context
-                    messages = []
-                    for m in st.session_state.chat_history[:-1]:  # exclude current user msg
+                    # ── Grounding system prompt ─────────────────────
+                    # Anchors Claude strictly to the provided data context.
+                    # Prevents hallucination and keeps responses data-driven.
+                    system_prompt = """You are a data analyst assistant for Homebuilder Enterprises, a Texas homebuilder.
+
+GROUNDING RULES — follow these strictly:
+1. You ONLY answer questions using the data context provided to you in this conversation.
+2. If a question cannot be answered from the provided data, respond with exactly:
+   "I don't have that information in the current dataset."
+3. Never invent, estimate, or extrapolate numbers not present in the data.
+4. Always cite specific numbers when answering. Format currency with $ and commas.
+5. When performing a calculation, show your work (e.g. "201 closed / 120 target = 167.5% attainment").
+6. Reference which data section your answer comes from, e.g.:
+   "According to the community scorecard..." or "Based on the consultant leaderboard..."
+7. Do not answer questions unrelated to Homebuilder Enterprises sales performance.
+8. If you are uncertain whether a number is exact or approximate, say so explicitly."""
+
+                    # ── Grounded message structure ──────────────────
+                    # Pattern: data context injected as first user/assistant exchange,
+                    # then conversation history, then current question.
+                    # This is the standard RAG grounding pattern.
+                    messages = [
+                        {
+                            "role": "user",
+                            "content": (
+                                "I am providing you with the Homebuilder Enterprises sales dataset. "
+                                "This is the ONLY data you are authorized to use when answering questions. "
+                                "Do not use any knowledge outside of this data.\n\n"
+                                f"=== GROUNDED DATA CONTEXT ===\n{data_context}\n=== END OF DATA CONTEXT ==="
+                            )
+                        },
+                        {
+                            "role": "assistant",
+                            "content": (
+                                "Understood. I have reviewed the Homebuilder Enterprises sales dataset and I am "
+                                "grounded exclusively in this data. I will only answer questions based on the "
+                                "information provided, cite specific numbers, show my calculations, and reference "
+                                "the relevant data section in each response. I will not use any outside knowledge "
+                                "or fabricate information not present in the dataset."
+                            )
+                        }
+                    ]
+
+                    # Append prior conversation turns (excluding current question)
+                    for m in st.session_state.chat_history[:-1]:
                         messages.append({"role": m["role"], "content": m["content"]})
-                    messages.append({
-                        "role": "user",
-                        "content": f"""You are a data analyst assistant for Homebuilder Enterprises, a Texas homebuilder.
-You have access to the following sales data summary. Answer the user's question concisely and accurately based on this data.
-If a question cannot be answered from the data provided, say so clearly.
-Always be specific with numbers when available. Format currency with $ and commas.
 
-=== DATA CONTEXT ===
-{data_context}
-===================
-
-User question: {user_input}"""
-                    })
+                    # Append current user question
+                    messages.append({"role": "user", "content": user_input})
 
                     response = client.messages.create(
-                        model="claude-sonnet-4-20250514",
-                        max_tokens=8192,
+                        model="claude-sonnet-4-6",
+                        max_tokens=4000,
+                        system=system_prompt,
                         messages=messages,
                     )
                     answer = response.content[0].text
