@@ -342,50 +342,53 @@ with tab2:
         # ── Community Scorecard ─────────────────────────────────
         st.markdown('<div class="section-header">Community Scorecard</div>', unsafe_allow_html=True)
 
-        def tier_color(tier):
-            return {"Target Met": "🟢", "On Track": "🟡", "At Risk": "🟠", "Below Target": "🔴"}.get(tier, "⚪")
-
         display_cols = [
             "community", "region", "regional_manager",
-            "closed_units", "sales_target_units", "target_attainment_pct",
+            "closed_units", "cancelled_units", "under_contract_units",
             "cancellation_rate", "avg_price_per_sqft", "avg_days_to_close",
-            "avg_gross_margin_pct", "performance_tier"
+            "avg_gross_margin_pct", "total_upgrade_revenue", "upgrade_attach_rate"
         ]
-        scorecard = df_comm_f[display_cols].copy()
-        scorecard["target_attainment_pct"] = (scorecard["target_attainment_pct"] * 100).round(1).astype(str) + "%"
-        scorecard["cancellation_rate"]     = (scorecard["cancellation_rate"] * 100).round(1).astype(str) + "%"
-        scorecard["avg_price_per_sqft"]    = "$" + scorecard["avg_price_per_sqft"].round(2).astype(str)
-        scorecard["avg_days_to_close"]     = scorecard["avg_days_to_close"].round(0).astype(str) + " days"
-        scorecard["avg_gross_margin_pct"]  = (scorecard["avg_gross_margin_pct"] * 100).round(1).astype(str) + "%"
-        scorecard["performance_tier"]      = scorecard["performance_tier"].apply(lambda x: tier_color(x) + " " + x)
+        available_cols = [c for c in display_cols if c in df_comm_f.columns]
+        scorecard = df_comm_f[available_cols].copy()
+        scorecard["cancellation_rate"]    = (scorecard["cancellation_rate"] * 100).round(1).astype(str) + "%"
+        scorecard["avg_price_per_sqft"]   = "$" + scorecard["avg_price_per_sqft"].round(2).astype(str)
+        scorecard["avg_days_to_close"]    = scorecard["avg_days_to_close"].round(0).astype(str) + " days"
+        scorecard["avg_gross_margin_pct"] = (scorecard["avg_gross_margin_pct"] * 100).round(1).astype(str) + "%"
+        scorecard["total_upgrade_revenue"]= scorecard["total_upgrade_revenue"].apply(lambda x: f"${x:,.0f}")
+        scorecard["upgrade_attach_rate"]  = (scorecard["upgrade_attach_rate"] * 100).round(1).astype(str) + "%"
         scorecard.columns = [
             "Community", "Region", "Manager",
-            "Closed", "Target", "Attainment",
+            "Closed", "Cancelled", "In Pipeline",
             "Cancel Rate", "$/Sqft", "Avg Days",
-            "Margin", "Status"
-        ]
+            "Margin", "Upgrade Rev", "Upgrade Attach"
+        ][:len(available_cols)]
         st.dataframe(scorecard, use_container_width=True, hide_index=True)
 
         col_l, col_r = st.columns(2)
 
-        # ── Closed Units vs Target ──────────────────────────────
+        # ── Contract Volume by Community ────────────────────────
         with col_l:
-            st.markdown('<div class="section-header">Closed Units vs Target by Community</div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-header">Contract Volume by Community</div>', unsafe_allow_html=True)
             fig_bar = go.Figure()
-            fig_bar.add_trace(go.Bar(
-                name="Target", x=df_comm_f["community"],
-                y=df_comm_f["sales_target_units"],
-                marker_color="#ecf0f1", marker_line_color="#bdc3c7",
-                marker_line_width=1, opacity=0.8
-            ))
             fig_bar.add_trace(go.Bar(
                 name="Closed", x=df_comm_f["community"],
                 y=df_comm_f["closed_units"],
                 marker_color="#27ae60", opacity=0.9
             ))
+            fig_bar.add_trace(go.Bar(
+                name="In Pipeline", x=df_comm_f["community"],
+                y=df_comm_f["under_contract_units"],
+                marker_color="#3498db", opacity=0.8
+            ))
+            fig_bar.add_trace(go.Bar(
+                name="Cancelled", x=df_comm_f["community"],
+                y=df_comm_f["cancelled_units"],
+                marker_color="#e74c3c", opacity=0.7
+            ))
             fig_bar.update_layout(
-                barmode="overlay", height=360, margin=dict(t=10),
-                xaxis_tickangle=-30, yaxis_title="Units"
+                barmode="stack", height=360, margin=dict(t=10),
+                xaxis_tickangle=-30, yaxis_title="Units",
+                legend=dict(orientation="h", y=1.05)
             )
             st.plotly_chart(fig_bar, use_container_width=True)
 
@@ -1026,6 +1029,7 @@ with tab6:
             "Who is the top performing sales consultant by closed units and by upgrade revenue?",
             "Which floor plan generates the most upgrade revenue on average?",
             "Which communities are at risk of missing their annual unit targets?",
+            "Compare avg days to close across all consultants — who closes fastest?",
             "What is the total upgrade revenue and which region contributes the most?",
             "Which lead source has the highest close rate?",
             "What's the financing mix for closed contracts and which loan type is most common?",
