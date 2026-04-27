@@ -16,7 +16,7 @@ clean-targets:
   - "dbt_packages"
 
 models:
-  data-engineer-assessment-2026:
+  dataengineerassessment:
     staging:
       +schema: STAGING
       +materialized: view
