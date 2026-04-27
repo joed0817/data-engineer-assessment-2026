@@ -18,7 +18,8 @@ models:
         tests:
           - not_null
           - accepted_values:
-              values: ['South Texas', 'Rio Grande Valley', 'Coastal Bend']
+              arguments:
+                values: ['South Texas', 'Rio Grande Valley', 'Coastal Bend']
       - name: status_raw
         description: Uppercased raw status value.
       - name: is_closed
