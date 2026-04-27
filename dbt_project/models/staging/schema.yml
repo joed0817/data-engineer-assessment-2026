@@ -1,0 +1,66 @@
+version: 2
+
+models:
+  - name: stg_homebuilder_sales
+    description: >
+      Cleaned and standardized homebuilder sales transactions. Casts raw string dates
+      to proper DATE types, adds boolean status flags (is_closed, is_cancelled,
+      is_under_contract), derives financial ratios (upgrade_attach_rate, incentive_rate),
+      and extracts time dimensions for easy dashboarding. One row per contract.
+    columns:
+      - name: contract_id
+        description: Unique contract identifier. Primary key.
+        tests:
+          - unique
+          - not_null
+      - name: region
+        description: Sales region. Foreign key to stg_regional_manager_lookup.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['South Texas', 'Rio Grande Valley', 'Coastal Bend']
+      - name: status_raw
+        description: Uppercased raw status value.
+      - name: is_closed
+        description: TRUE if the contract reached closing.
+      - name: is_cancelled
+        description: TRUE if the contract was cancelled before closing.
+      - name: is_under_contract
+        description: TRUE if the contract is still open (not yet closed or cancelled).
+      - name: contract_price
+        description: Final contracted sale price in dollars.
+        tests:
+          - not_null
+      - name: sqft
+        description: Square footage of the selected plan.
+        tests:
+          - not_null
+      - name: days_to_close_calc
+        description: >
+          Days to close recalculated from parsed dates. Should match days_to_close_raw
+          for closed contracts. NULL for cancelled and under-contract records.
+      - name: upgrade_attach_rate
+        description: Upgrade amount as a proportion of base price (e.g. 0.08 = 8%).
+      - name: incentive_rate
+        description: Incentive amount as a proportion of contract price.
+      - name: is_referral
+        description: TRUE if the buyer source was Realtor Referral or Repeat/Referral.
+
+  - name: stg_regional_manager_targets
+    description: >
+      Cleaned regional manager reference data. Three rows — one per region.
+      Used to enrich sales records with manager names and performance targets.
+    columns:
+      - name: region
+        description: Sales region name. Primary key and join key.
+        tests:
+          - unique
+          - not_null
+      - name: regional_manager
+        description: Full name of the regional manager.
+      - name: sales_target_units
+        description: Annual closed unit target for the region.
+      - name: margin_target_pct
+        description: Target gross margin as a decimal (e.g. 0.18 = 18%).
+      - name: sales_target_units
+        description: Annual closed unit target for the region. (revenue_target_est moved to mart layer — computed from actual avg closing prices per community.)

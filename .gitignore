@@ -1,0 +1,23 @@
+# Secrets — never commit these
+.streamlit/secrets.toml
+profiles.yml
+*.env
+.env
+
+# dbt
+target/
+dbt_packages/
+logs/
+.dbt/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db

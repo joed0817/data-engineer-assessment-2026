@@ -1,0 +1,71 @@
+version: 2
+
+sources:
+  - name: raw
+    database: ASSESSMENT
+    schema: RAW
+    description: >
+      Raw source data loaded directly from CSV and Excel files provided in the
+      Data Engineer Assessment. Data is synthetic and may contain
+      minor inconsistencies — cleaning is handled in the staging layer.
+
+    tables:
+      - name: homebuilder_sales
+        description: >
+          600 simulated new home sales transactions spanning 2023–2024 across
+          8 communities, 3 regions, 7 floor plans, and 6 sales consultants.
+        columns:
+          - name: contract_id
+            description: Unique identifier for each sales contract (e.g. CTR-0001)
+          - name: community
+            description: Name of the housing community
+          - name: city
+            description: City where the community is located
+          - name: region
+            description: Sales region (South Texas, Rio Grande Valley, Coastal Bend)
+          - name: plan_name
+            description: Floor plan name selected by the buyer
+          - name: sqft
+            description: Square footage of the plan
+          - name: bedrooms
+            description: Number of bedrooms
+          - name: bathrooms
+            description: Number of bathrooms (may include half baths as .5)
+          - name: base_price
+            description: Base price of the home before upgrades or incentives
+          - name: upgrade_amount
+            description: Dollar value of buyer-selected upgrades
+          - name: incentive_amount
+            description: Dollar value of builder incentives applied
+          - name: contract_price
+            description: Final contracted price (base + upgrades - incentives)
+          - name: contract_date
+            description: Date the contract was signed (YYYY-MM-DD string in raw)
+          - name: close_date
+            description: Date the home closed escrow. NULL for Cancelled and Under Contract records.
+          - name: days_to_close
+            description: Calendar days from contract to close. NULL for open/cancelled contracts.
+          - name: status
+            description: Contract status — Closed, Cancelled, or Under Contract
+          - name: buyer_source
+            description: How the buyer found the community (lead source)
+          - name: agent_commission
+            description: Commission paid to sales agent in dollars
+          - name: loan_type
+            description: Buyer financing type (FHA, Conventional, Cash, USDA, VA)
+          - name: sales_consultant
+            description: Name of the sales consultant who managed the contract
+
+      - name: regional_manager_targets
+        description: >
+          Reference table mapping each sales region to its regional manager
+          and annual performance targets.
+        columns:
+          - name: region
+            description: Sales region name (join key to homebuilder_sales)
+          - name: regional_manager
+            description: Full name of the regional manager
+          - name: sales_target_units
+            description: Annual unit sales target for the region
+          - name: margin_target_pct
+            description: Target gross margin percentage (e.g. 0.18 = 18%)

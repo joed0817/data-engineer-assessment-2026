@@ -1,0 +1,69 @@
+version: 2
+
+models:
+  - name: mart_sales_performance
+    description: >
+      Primary analysis-ready model. One row per contract, fully enriched with
+      regional manager context, performance targets, and all derived KPIs including
+      price per sqft, gross margin vs target, days-to-close, and velocity buckets.
+      This is the source model for the Streamlit dashboard and Cortex AI queries.
+    columns:
+      - name: contract_id
+        description: Unique contract identifier. Primary key.
+        tests:
+          - unique
+          - not_null
+      - name: price_per_sqft
+        description: Contract price divided by square footage. Key pricing efficiency metric.
+      - name: gross_margin_pct
+        description: >
+          Estimated gross margin: (contract_price - base_price) / contract_price.
+          Note: uses base_price as a cost proxy since COGS is not available in this dataset.
+      - name: margin_vs_target
+        description: >
+          Gross margin percentage minus the regional margin target. Positive = above target.
+      - name: days_to_close
+        description: Calendar days from contract signing to close. NULL for open and cancelled contracts.
+      - name: close_speed_bucket
+        description: >
+          Categorical velocity bucket: Fast (≤90), On-Track (91–120), Slow (121–150), At-Risk (>150).
+      - name: regional_manager
+        description: Regional manager name joined from the lookup table.
+      - name: sales_target_units
+        description: Regional annual unit target carried through for per-row context.
+
+  - name: mart_community_summary
+    description: >
+      Community-level aggregate rollup. Pre-computed KPIs including closed units,
+      cancellation rate, average price/sqft, velocity, margin vs target, and target
+      attainment percentage. Used for the dashboard scorecard and community comparison views.
+    columns:
+      - name: community
+        description: Housing community name. Grain key (one row per community).
+        tests:
+          - unique
+          - not_null
+      - name: cancellation_rate
+        description: Cancelled contracts as a proportion of all resolved contracts (closed + cancelled).
+      - name: target_attainment_pct
+        description: Closed units divided by the regional annual sales target.
+      - name: performance_tier
+        description: >
+          Categorical tier based on target attainment: Target Met (≥100%), On Track (≥75%),
+          At Risk (≥50%), Below Target (<50%).
+
+  - name: mart_consultant_performance
+    description: >
+      Sales consultant leaderboard model. Aggregates volume, revenue, velocity, upgrade
+      attachment, and cancellation metrics by consultant and region. Used for the
+      consultant comparison view in the dashboard.
+    columns:
+      - name: sales_consultant
+        description: Consultant name. Grain key.
+        tests:
+          - unique
+          - not_null
+      - name: referral_close_rate
+        description: Proportion of closed deals that came from referral sources.
+      - name: cancellation_rate
+        description: Cancelled contracts as a proportion of all resolved contracts.
