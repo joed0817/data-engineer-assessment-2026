@@ -1046,10 +1046,10 @@ FINANCING MIX (closed contracts):
         user_input = st.session_state.pending_question
         st.session_state.pending_question = None
     else:
-        user_input = st.chat_input("Ask a question about the sales data...")
+        user_input = st.chat_input("Ask a question about the sales data...", key="chat_input_main")
 
     # User input
-    user_input = st.chat_input("Ask a question about the sales data...")
+    user_input = st.chat_input("Ask a question about the sales data...", key="chat_input_main")
 
     if user_input:
         st.session_state.chat_history.append({"role": "user", "content": user_input})
