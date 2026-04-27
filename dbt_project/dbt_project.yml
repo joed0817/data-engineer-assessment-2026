@@ -1,8 +1,8 @@
-name: 'data-engineer-assessment-2026'
+name: 'dataengineerassessment'
 version: '1.0.0'
 config-version: 2
 
-profile: 'data-engineer-assessment-2026'
+profile: 'dataengineerassessment'
 
 model-paths: ["models"]
 analysis-paths: ["analyses"]
